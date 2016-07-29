@@ -1,44 +1,46 @@
-// Copyright 2012 Apcera Inc. All rights reserved.
+// Copyright 2012-2016 Apcera Inc. All rights reserved.
 // +build ignore
 
 package main
 
 import (
 	"flag"
-	"github.com/apcera/nats"
 	"log"
+
+	"github.com/nats-io/nats"
 )
 
+// NOTE: Use tls scheme for TLS, e.g. nats-pub -s tls://demo.nats.io:4443 foo hello
 func usage() {
-	log.Fatalf("Usage: nats-pub [-s server] [--ssl] [-t] <subject> <msg> \n")
+	log.Fatalf("Usage: nats-pub [-s server (%s)] <subject> <msg> \n", nats.DefaultURL)
 }
 
 func main() {
-	var url = flag.String("s", nats.DefaultURL, "The nats server URL")
-	var ssl = flag.Bool("ssl", false, "Use Secure Connection")
+	var urls = flag.String("s", nats.DefaultURL, "The nats server URLs (separated by comma)")
 
 	log.SetFlags(0)
 	flag.Usage = usage
 	flag.Parse()
 
 	args := flag.Args()
-	if len(args) < 1 {
+	if len(args) < 2 {
 		usage()
 	}
 
-	opts := nats.DefaultOptions
-	opts.Url = *url
-	opts.Secure = *ssl
-
-	nc, err := opts.Connect()
+	nc, err := nats.Connect(*urls)
 	if err != nil {
-		log.Fatalf("Can't connect: %v\n", err)
+		log.Fatal(err)
 	}
+	defer nc.Close()
 
 	subj, msg := args[0], []byte(args[1])
 
 	nc.Publish(subj, msg)
-	nc.Close()
+	nc.Flush()
 
-	log.Printf("Published [%s] : '%s'\n", subj, msg)
+	if err := nc.LastError(); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Printf("Published [%s] : '%s'\n", subj, msg)
+	}
 }

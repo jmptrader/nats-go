@@ -2,24 +2,31 @@ package nats_test
 
 import (
 	"fmt"
-	"github.com/apcera/nats"
 	"time"
+
+	"github.com/nats-io/nats"
 )
 
 // Shows different ways to create a Conn
 func ExampleConnect() {
 
-	nats.Connect(nats.DefaultURL)
-	nats.Connect("nats://derek:secretpassword@nats.apcera.com:421")
+	nc, _ := nats.Connect(nats.DefaultURL)
+	nc.Close()
+
+	nc, _ = nats.Connect("nats://derek:secretpassword@demo.nats.io:4222")
+	nc.Close()
+
+	nc, _ = nats.Connect("tls://derek:secretpassword@demo.nats.io:4443")
+	nc.Close()
 
 	opts := nats.Options{
-		AllowReconnect : true,
-		MaxReconnect   : 10,
-		ReconnectWait  : 5 * time.Second,
-		Timeout        : 1 * time.Second,
+		AllowReconnect: true,
+		MaxReconnect:   10,
+		ReconnectWait:  5 * time.Second,
+		Timeout:        1 * time.Second,
 	}
 
-	nc, _ := opts.Connect()
+	nc, _ = opts.Connect()
 	nc.Close()
 }
 
@@ -52,7 +59,7 @@ func ExampleSubscription_NextMsg() {
 	defer nc.Close()
 
 	sub, _ := nc.SubscribeSync("foo")
-	m, err := sub.NextMsg(1*time.Second)
+	m, err := sub.NextMsg(1 * time.Second)
 	if err == nil {
 		fmt.Printf("Received a message: %s\n", string(m.Data))
 	} else {
@@ -88,8 +95,8 @@ func ExampleConn_Flush() {
 	nc, _ := nats.Connect(nats.DefaultURL)
 	defer nc.Close()
 
-	msg := &nats.Msg{Subject:"foo", Reply:"bar", Data:[]byte("Hello World!")}
-	for i := 0 ; i < 1000 ; i++ {
+	msg := &nats.Msg{Subject: "foo", Reply: "bar", Data: []byte("Hello World!")}
+	for i := 0; i < 1000; i++ {
 		nc.PublishMsg(msg)
 	}
 	err := nc.Flush()
@@ -130,7 +137,7 @@ func ExampleConn_QueueSubscribe() {
 	received := 0
 
 	nc.QueueSubscribe("foo", "worker_group", func(_ *nats.Msg) {
-		received += 1
+		received++
 	})
 }
 
@@ -140,8 +147,8 @@ func ExampleSubscription_AutoUnsubscribe() {
 
 	received, wanted, total := 0, 10, 100
 
-	sub, _ := nc.Subscribe("foo",  func(_ *nats.Msg) {
-		received += 1
+	sub, _ := nc.Subscribe("foo", func(_ *nats.Msg) {
+		received++
 	})
 	sub.AutoUnsubscribe(wanted)
 
@@ -174,9 +181,9 @@ func ExampleEncodedConn_Publish() {
 	defer c.Close()
 
 	type person struct {
-		Name     string
-		Address  string
-		Age      int
+		Name    string
+		Address string
+		Age     int
 	}
 
 	me := &person{Name: "derek", Age: 22, Address: "85 Second St"}
@@ -194,9 +201,9 @@ func ExampleEncodedConn_Subscribe() {
 	defer c.Close()
 
 	type person struct {
-		Name     string
-		Address  string
-		Age      int
+		Name    string
+		Address string
+		Age     int
 	}
 
 	c.Subscribe("hello", func(p *person) {
@@ -209,4 +216,51 @@ func ExampleEncodedConn_Subscribe() {
 
 	me := &person{Name: "derek", Age: 22, Address: "85 Second St"}
 	c.Publish("hello", me)
+}
+
+// BindSendChan() allows binding of a Go channel to a nats
+// subject for publish operations. The Encoder attached to the
+// EncodedConn will be used for marshalling.
+func ExampleEncodedConn_BindSendChan() {
+	nc, _ := nats.Connect(nats.DefaultURL)
+	c, _ := nats.NewEncodedConn(nc, "json")
+	defer c.Close()
+
+	type person struct {
+		Name    string
+		Address string
+		Age     int
+	}
+
+	ch := make(chan *person)
+	c.BindSendChan("hello", ch)
+
+	me := &person{Name: "derek", Age: 22, Address: "85 Second St"}
+	ch <- me
+}
+
+// BindRecvChan() allows binding of a Go channel to a nats
+// subject for subscribe operations. The Encoder attached to the
+// EncodedConn will be used for un-marshalling.
+func ExampleEncodedConn_BindRecvChan() {
+	nc, _ := nats.Connect(nats.DefaultURL)
+	c, _ := nats.NewEncodedConn(nc, "json")
+	defer c.Close()
+
+	type person struct {
+		Name    string
+		Address string
+		Age     int
+	}
+
+	ch := make(chan *person)
+	c.BindRecvChan("hello", ch)
+
+	me := &person{Name: "derek", Age: 22, Address: "85 Second St"}
+	c.Publish("hello", me)
+
+	// Receive the publish directly on a channel
+	who := <-ch
+
+	fmt.Printf("%v says hello!\n", who)
 }
